@@ -1,0 +1,446 @@
+import pygame
+from queue import PriorityQueue
+
+# Initialize Pygame
+pygame.init()
+
+WIDTH = 800
+WIN = pygame.display.set_mode((WIDTH + 200, WIDTH))  # Extra 200px for buttons
+pygame.display.set_caption("Path Finding Algorithm")
+
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+ORANGE = (255, 165, 0)
+TURQUOISE = (64, 224, 208)
+PURPLE = (128, 0, 128)
+GREY = (128, 128, 128)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+
+# Define button attributes
+BUTTON_WIDTH = 180
+BUTTON_HEIGHT = 40
+BUTTON_MARGIN = 20
+BUTTON_START_X = WIDTH + 10
+BUTTON_START_Y = 100
+BUTTONS = ["A*", "DFS", "BFS", "UCS", "Dijkstra"]
+button_rects = []
+
+class Spot:
+    def __init__(self, row, col, width, total_rows):
+        self.row = row
+        self.col = col
+        self.x = row * width
+        self.y = col * width
+        self.color = WHITE
+        self.neighbors = []
+        self.width = width
+        self.total_rows = total_rows
+
+    def get_pos(self):
+        return self.row, self.col
+
+    def is_closed(self):
+        return self.color == RED
+
+    def is_open(self):
+        return self.color == GREEN
+
+    def is_barrier(self):
+        return self.color == BLACK
+
+    def reset(self):
+        self.color = WHITE
+
+    def make_start(self):
+        self.color = ORANGE
+
+    def make_closed(self):
+        self.color = RED
+
+    def make_open(self):
+        self.color = GREEN
+
+    def make_barrier(self):
+        self.color = BLACK
+
+    def make_end(self):
+        self.color = TURQUOISE
+
+    def make_path(self):
+        self.color = PURPLE
+
+    def draw(self, win):
+        pygame.draw.rect(win, self.color, (self.x, self.y, self.width, self.width))
+
+    def update_neighbors(self, grid):
+        self.neighbors = []
+        if self.row < self.total_rows - 1 and not grid[self.row + 1][self.col].is_barrier():  # Down
+            self.neighbors.append(grid[self.row + 1][self.col])
+        if self.row > 0 and not grid[self.row - 1][self.col].is_barrier():  # Up
+            self.neighbors.append(grid[self.row - 1][self.col])
+        if self.col < self.total_rows - 1 and not grid[self.row][self.col + 1].is_barrier():  # Right
+            self.neighbors.append(grid[self.row][self.col + 1])
+        if self.col > 0 and not grid[self.row][self.col - 1].is_barrier():  # Left
+            self.neighbors.append(grid[self.row][self.col - 1])
+
+    def __lt__(self, other):
+        return False
+
+def h(p1, p2):
+    # Heuristic function for A* (Manhattan Distance)
+    x1, y1 = p1
+    x2, y2 = p2
+    return abs(x1 - x2) + abs(y1 - y2)
+
+def reconstruct_path(came_from, current, draw):
+    # Reconstructs the path by tracing back from the end node
+    while current in came_from:
+        current = came_from[current]
+        current.make_path()
+        draw()
+
+def algorithm(draw, grid, start, end, algorithm_type):
+    if algorithm_type == "A*":
+        return a_star(draw, grid, start, end)
+    elif algorithm_type == "Dijkstra":
+        return dijkstra(draw, grid, start, end)
+    elif algorithm_type == "UCS":
+        return ucs(draw, grid, start, end)
+    elif algorithm_type == "BFS":
+        return bfs(draw, grid, start, end)
+    elif algorithm_type == "DFS":
+        return dfs(draw, grid, start, end)
+
+def a_star(draw, grid, start, end):
+    count = 0
+    open_set = PriorityQueue()
+    open_set.put((0, count, start))
+    came_from = {}
+    g_score = {spot: float("inf") for row in grid for spot in row}
+    g_score[start] = 0
+    f_score = {spot: float("inf") for row in grid for spot in row}
+    f_score[start] = h(start.get_pos(), end.get_pos())
+
+    open_set_hash = {start}
+
+    while not open_set.empty():
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return
+
+        current = open_set.get()[2]
+        open_set_hash.remove(current)
+
+        if current == end:
+            reconstruct_path(came_from, end, draw)
+            end.make_end()
+            return True  # Path found
+
+        for neighbor in current.neighbors:
+            temp_g_score = g_score[current] + 1
+
+            if temp_g_score < g_score[neighbor]:
+                came_from[neighbor] = current
+                g_score[neighbor] = temp_g_score
+                f_score[neighbor] = temp_g_score + h(neighbor.get_pos(), end.get_pos())
+                if neighbor not in open_set_hash:
+                    count += 1
+                    open_set.put((f_score[neighbor], count, neighbor))
+                    open_set_hash.add(neighbor)
+                    neighbor.make_open()
+
+        draw()
+
+        if current != start:
+            current.make_closed()
+
+    show_message("Impossible")  # Show message if no path is found
+    return False
+
+def dijkstra(draw, grid, start, end):
+    count = 0
+    open_set = PriorityQueue()
+    open_set.put((0, count, start))
+    came_from = {}
+    g_score = {spot: float("inf") for row in grid for spot in row}
+    g_score[start] = 0
+
+    open_set_hash = {start}
+
+    while not open_set.empty():
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return
+
+        current = open_set.get()[2]
+        open_set_hash.remove(current)
+
+        if current == end:
+            reconstruct_path(came_from, end, draw)
+            end.make_end()
+            return True  # Path found
+
+        for neighbor in current.neighbors:
+            temp_g_score = g_score[current] + 1
+
+            if temp_g_score < g_score[neighbor]:
+                came_from[neighbor] = current
+                g_score[neighbor] = temp_g_score
+                if neighbor not in open_set_hash:
+                    count += 1
+                    open_set.put((g_score[neighbor], count, neighbor))
+                    open_set_hash.add(neighbor)
+                    neighbor.make_open()
+
+        draw()
+
+        if current != start:
+            current.make_closed()
+
+    show_message("Impossible")  # Show message if no path is found
+    return False
+
+def ucs(draw, grid, start, end):
+    count = 0
+    open_set = PriorityQueue()
+    open_set.put((0, count, start))
+    came_from = {}
+    g_score = {spot: float("inf") for row in grid for spot in row}
+    g_score[start] = 0
+
+    open_set_hash = {start}
+
+    while not open_set.empty():
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return
+
+        current = open_set.get()[2]
+        open_set_hash.remove(current)
+
+        if current == end:
+            reconstruct_path(came_from, end, draw)
+            end.make_end()
+            return True  # Path found
+
+        for neighbor in current.neighbors:
+            temp_g_score = g_score[current] + 1
+
+            if temp_g_score < g_score[neighbor]:
+                came_from[neighbor] = current
+                g_score[neighbor] = temp_g_score
+                if neighbor not in open_set_hash:
+                    count += 1
+                    open_set.put((g_score[neighbor], count, neighbor))
+                    open_set_hash.add(neighbor)
+                    neighbor.make_open()
+
+        draw()
+
+        if current != start:
+            current.make_closed()
+
+    show_message("Impossible")  # Show message if no path is found
+    return False
+
+def bfs(draw, grid, start, end):
+    queue = [start]
+    came_from = {}
+    visited = {start}
+    found = False
+
+    while queue:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return
+
+        current = queue.pop(0)
+
+        if current == end:
+            found = True
+            break
+
+        for neighbor in current.neighbors:
+            if neighbor not in visited and not neighbor.is_barrier():
+                visited.add(neighbor)
+                came_from[neighbor] = current
+                queue.append(neighbor)
+                neighbor.make_open()
+
+        draw()
+
+        if current != start:
+            current.make_closed()
+
+    if found:
+        reconstruct_path(came_from, end, draw)
+        end.make_end()
+    else:
+        show_message("Impossible")  # Show message if no path is found
+
+    return found
+
+def dfs(draw, grid, start, end):
+    stack = [start]
+    came_from = {}
+    visited = {start}
+    found = False
+
+    while stack:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return
+
+        current = stack.pop()
+
+        if current == end:
+            found = True
+            break
+
+        for neighbor in current.neighbors:
+            if neighbor not in visited and not neighbor.is_barrier():
+                visited.add(neighbor)
+                came_from[neighbor] = current
+                stack.append(neighbor)
+                neighbor.make_open()
+
+        draw()
+
+        if current != start:
+            current.make_closed()
+
+    if found:
+        reconstruct_path(came_from, end, draw)
+        end.make_end()
+    else:
+        show_message("Impossible")  # Show message if no path is found
+
+    return found
+
+def show_message(message):
+    font = pygame.font.Font(None, 50)
+    text_surface = font.render(message, True, (255, 0, 0))  # Red color text
+    text_rect = text_surface.get_rect(center=(WIDTH // 2, WIDTH // 2))
+    
+    # Display the message for 2 seconds
+    WIN.blit(text_surface, text_rect)
+    pygame.display.update()
+    pygame.time.delay(2000)  # Delay for 2 seconds to show the message
+
+def make_grid(rows, width):
+    grid = []
+    gap = width // rows
+    for i in range(rows):
+        grid.append([])
+        for j in range(rows):
+            spot = Spot(i, j, gap, rows)
+            grid[i].append(spot)
+    return grid
+
+def draw_grid(win, rows, width):
+    gap = width // rows
+    for i in range(rows):
+        pygame.draw.line(win, GREY, (0, i * gap), (width, i * gap))  # Horizontal lines
+        for j in range(rows):
+            pygame.draw.line(win, GREY, (j * gap, 0), (j * gap, width))  # Vertical lines
+
+def draw_buttons(win):
+    font = pygame.font.Font(None, 30)
+    question_surface = font.render("Choose one:", True, (0, 0, 0))
+    win.blit(question_surface, (BUTTON_START_X + 10, 60))
+    
+    button_rects.clear()  # Clear the button rectangles before drawing
+    for i, button in enumerate(BUTTONS):
+        rect = pygame.Rect(BUTTON_START_X, BUTTON_START_Y + i * (BUTTON_HEIGHT + BUTTON_MARGIN), BUTTON_WIDTH, BUTTON_HEIGHT)
+        button_rects.append(rect)
+        pygame.draw.rect(win, (200, 200, 200), rect)  # Light grey button
+        text_surface = font.render(button, True, (0, 0, 0))
+        win.blit(text_surface, (BUTTON_START_X + 10, BUTTON_START_Y + i * (BUTTON_HEIGHT + BUTTON_MARGIN) + 10))
+
+def draw(win, grid, rows, width):
+    win.fill(WHITE)
+    for row in grid:
+        for spot in row:
+            spot.draw(win)
+    draw_grid(win, rows, width)
+    draw_buttons(win)
+    pygame.display.update()
+
+def get_clicked_pos(pos, rows, width):
+    gap = width // rows
+    y, x = pos
+    row = y // gap
+    col = x // gap
+    return row, col
+
+def main(win, width):
+    ROWS = 50
+    grid = make_grid(ROWS, width)
+
+    start = None
+    end = None
+    algorithm_type = None
+
+    run = True
+    while run:
+        draw(win, grid, ROWS, width)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+
+            if pygame.mouse.get_pressed()[0]:  # Left mouse button
+                pos = pygame.mouse.get_pos()
+                if pos[0] < width:  # Click in grid area
+                    row, col = get_clicked_pos(pos, ROWS, width)
+                    spot = grid[row][col]
+
+                    if not start and spot != end:
+                        start = spot
+                        start.make_start()
+
+                    elif not end and spot != start:
+                        end = spot
+                        end.make_end()
+
+                    elif spot != end and spot != start:
+                        spot.make_barrier()
+                else:  # Click in button area
+                    for i, rect in enumerate(button_rects):
+                        if rect.collidepoint(pos):
+                            algorithm_type = BUTTONS[i]
+
+            elif pygame.mouse.get_pressed()[2]:  # Right mouse button
+                pos = pygame.mouse.get_pos()
+                if pos[0] < width:  # Click in grid area
+                    row, col = get_clicked_pos(pos, ROWS, width)
+                    spot = grid[row][col]
+                    spot.reset()
+                    if spot == start:
+                        start = None
+                    elif spot == end:
+                        end = None
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_c:  # Clear the grid
+                    start = None
+                    end = None
+                    grid = make_grid(ROWS, width)
+
+                if algorithm_type and start and end:
+                    for row in grid:
+                        for spot in row:
+                            spot.update_neighbors(grid)
+                    algorithm(lambda: draw(win, grid, ROWS, width), grid, start, end, algorithm_type)
+                    algorithm_type = None  # Reset algorithm type after running
+
+    pygame.quit()
+
+main(WIN, WIDTH)
